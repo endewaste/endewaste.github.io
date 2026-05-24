@@ -1,1 +1,469 @@
-<title> End e-waste Educational learning resources to help the environment  </title>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>E-waste game - Grouping Logic</title>
+  <style type="text/css">
+
+
+    body { 
+      background-color: white; 
+      margin: 0px; 
+      font-family: sans-serif; 
+    }   
+    
+    #main-container { 
+      width: 100vw; 
+      background-color: lemonchiffon; 
+      display: flex; 
+      flex-direction: column; 
+    }
+
+    .dragable-div {
+      width: 96vw;
+      background-color: silver;
+      margin: 1.5vh 2vw;
+      border: 2px dotted #666;
+      display: flex;
+      align-items: center;
+      cursor: move;
+      transition: transform 0.3s ease, background-color 0.3s ease;
+    }
+
+    /* Style for items in the correct relative order */
+    .good-sibling {
+      background-color: #d4edda !important; /* Light Green */
+      border: 2px solid #28a745 !important;
+    }
+
+    .dragging {
+      background-color: #5D4037 !important; 
+      color: white; 
+      transform: scale(0.8); 
+      border: 2px solid #3E2723 !important;
+      z-index: 100;
+    }
+
+    .drag-over {
+      background-color: #b8daff !important;
+      border: 2px solid #007bff !important;
+    }
+
+    @keyframes flash-twice {
+      0%, 50%, 100% { opacity: 1; }
+      25%, 75% { opacity: 0.3; }
+    }
+
+    .flash-effect {
+      animation: flash-twice 0.4s ease-in-out 2;
+    }
+
+    #modal-overlay {
+      display: none; 
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.6); 
+      z-index: 2000; 
+      justify-content: center;
+      align-items: center;
+      font-size: 2.2vw;
+    }
+
+    #start-modal {
+      width: 80vw;
+/* height: 33vh;*/
+      background-color: white;
+      border: 5px solid #5D4037;
+      border-radius: 15px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      padding: 20px;
+      text-align: center;
+      font-size: 3.8vw;
+      font-size: max(2.5vw, 2vh); 
+    }
+
+    #modal-btn {
+      padding: 20px;
+      font-size: 3.1vw;
+      font-size: max(2.5vw, 3vh); 
+      font-weight: bold;
+      cursor: pointer;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 8px;
+    }
+
+    .elevator-cmd {
+      padding: 0.5%; margin: 0.5%; 
+/*      width: 10%;*/
+      width: max(3vw, 5vh);
+      height: max(3vw, 5vh);
+
+      aspect-ratio: 1 / 1; 
+      font-size: 7.0vw;
+      font-size: max(2vw, 3vh); 
+      
+      text-align: center; cursor: pointer; user-select: none;
+    }
+    
+    /* Acts as a flex-item globally, but a normal block container internally */
+    .blurb { 
+      padding: 1%; 
+      flex-grow: 1;    /* Takes up all remaining space next to the buttons */
+      font-size: 2.5vh;
+      font-size: max(1.8vw, 2.1vh); 
+      display: block;  /* Ensures standard block layout for text wrapping */
+    }
+
+
+    
+    /* Floats to the right side of the .blurb container */
+    .blurb-img { 
+      float: right;
+      width: max(8vw, 6vh);
+ 
+      aspect-ratio: 1 / 1; 
+      background-color: white; 
+      margin-left: 5px;   /* Pushes text away from the left edge of the image */
+      margin-bottom: 10px;  /* Pushes text away if it wraps underneath the image */
+    }
+
+
+
+    /* Applies only when the screen is smaller than */
+    @media (max-width: 1100px) {
+      .blurb {
+        /* Scaled for smaller screens */
+        font-size: max(1.5vw, 1.9vh) !important; 
+        color: darkblue !important;
+      }
+
+      .blurb-img { 
+      float: right;
+      width: max(12vw, 10vh);
+      }
+
+      #modal-btn {
+        font-size: max(4.5vw, 4vh); 
+        }
+
+
+    }
+
+
+
+
+    
+    img { width: 100%; border-radius: 0.2vw; pointer-events: none; }
+    .red { background-color: red; }
+    .green { background-color: green; }
+  </style>
+</head>
+<body>
+
+<div id="modal-overlay">
+  <div id="start-modal">
+    <div id="modal-content">
+       <button id="modal-btn">please click here, I shuffle, you sort</button>
+    </div>
+  </div>
+</div>
+
+<div id="main-container"></div>
+
+<script type="text/javascript">
+const container = document.getElementById('main-container');
+let dragSrcEl = null;
+
+// --- INITIALIZATION ---
+window.addEventListener('DOMContentLoaded', async () => {
+  await drawGameBoardInit(myArray, 2);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const overlay = document.getElementById('modal-overlay');
+  overlay.style.display = 'flex';
+
+  document.getElementById('modal-btn').addEventListener('click', () => {
+    overlay.style.display = 'none';
+    const shuffledKey = shuffleTheIndex(myArray.length);
+    drawGameBoardShuffled(myArray, shuffledKey);
+    checkGoodSiblings();
+    calculateScore();
+  });
+});
+
+// --- SCORING LOGIC ---
+function calculateScore() {
+  const allDivs = document.querySelectorAll('.dragable-div');
+  let correctCount = 0;
+  
+  allDivs.forEach((div, index) => {
+    const actualId = parseInt(div.id.replace('item', ''));
+    if (actualId === index) {
+      correctCount++;
+    }
+  });
+
+  const percent = Math.round((correctCount / myArray.length) * 100);
+  document.title = `e-waste ${percent}% game correct`;
+  var myCrypto = Math.floor( Math.random() * 10000000 );
+
+  if (percent === 100) {
+    const overlay = document.getElementById('modal-overlay');
+    const modalContent = document.getElementById('modal-content');
+    modalContent.innerHTML = `<h1>Congratulations!</h1><p>You have correctly sorted the items</p><p>Score: 100%</p>  <p> Print now to pdf file, Ctrl + p  <p>   <p> id: ${myCrypto}  <p>  `;
+    overlay.style.display = 'flex';
+  }
+}
+
+// --- GOOD SIBLINGS LOGIC ---
+function checkGoodSiblings() {
+  const allDivs = Array.from(document.querySelectorAll('.dragable-div'));
+  allDivs.forEach(div => div.classList.remove('good-sibling'));
+
+  for (let i = 0; i < allDivs.length - 1; i++) {
+    const currentItem = allDivs[i];
+    const nextItem = allDivs[i+1];
+    const currentId = parseInt(currentItem.id.replace('item', ''));
+    const nextId = parseInt(nextItem.id.replace('item', ''));
+
+    if (nextId === currentId + 1) {
+      currentItem.classList.add('good-sibling');
+      nextItem.classList.add('good-sibling');
+
+      // Append Hint to Current Item
+      const currentBlurb = currentItem.querySelector('.blurb');
+      if (!currentBlurb.innerHTML.includes(" - hint index")) {
+        currentBlurb.innerHTML += ` - hint index ${currentId}`;
+      }
+
+      // Append Hint to Next Item
+      const nextBlurb = nextItem.querySelector('.blurb');
+      if (!nextBlurb.innerHTML.includes(" - hint index")) {
+        nextBlurb.innerHTML += ` - hint index ${nextId}`;
+      }
+    }
+  }
+}
+
+function getConnectedGroup(el) {
+  if (!el.classList.contains('good-sibling')) return [el];
+  let group = [el];
+  
+  let prev = el.previousElementSibling;
+  while (prev && prev.classList.contains('good-sibling')) {
+    const pId = parseInt(prev.id.replace('item', ''));
+    const gId = parseInt(group[0].id.replace('item', ''));
+    if (pId + 1 === gId) {
+      group.unshift(prev);
+      prev = prev.previousElementSibling;
+    } else break;
+  }
+
+  let next = el.nextElementSibling;
+  while (next && next.classList.contains('good-sibling')) {
+    const nId = parseInt(next.id.replace('item', ''));
+    const gId = parseInt(group[group.length - 1].id.replace('item', ''));
+    if (nId === gId + 1) {
+      group.push(next);
+      next = next.nextElementSibling;
+    } else break;
+  }
+  return group;
+}
+
+// --- BUTTON LOGIC ---
+container.addEventListener('click', async function(event) {
+  const btn = event.target;
+  const currentItem = btn.closest('.dragable-div');
+  if (!currentItem) return;
+
+  const isUp = btn.classList.contains('btn-up');
+  const isDown = btn.classList.contains('btn-down');
+  
+  if (isUp || isDown) {
+    const group = getConnectedGroup(currentItem);
+    const leadItem = isUp ? group[0] : group[group.length - 1];
+    const targetNeighbor = isUp ? leadItem.previousElementSibling : leadItem.nextElementSibling;
+    
+    if (!targetNeighbor) return;
+
+    group.forEach(el => el.classList.add('flash-effect'));
+    await new Promise(r => setTimeout(r, 400));
+    group.forEach(el => {
+      el.classList.remove('flash-effect');
+      el.classList.add('dragging');
+    });
+    await new Promise(r => setTimeout(r, 300)); 
+
+    if (isUp) {
+      group.forEach(el => container.insertBefore(el, targetNeighbor));
+    } else {
+      [...group].reverse().forEach(el => container.insertBefore(el, targetNeighbor.nextSibling));
+    }
+    
+    group[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    group.forEach(el => {
+      el.classList.remove('dragging');
+      el.classList.add('flash-effect');
+    });
+    await new Promise(r => setTimeout(r, 400));
+    group.forEach(el => el.classList.remove('flash-effect'));
+    
+    checkGoodSiblings();
+    calculateScore();
+  }
+});
+
+// --- DRAG AND DROP ---
+container.addEventListener('dragstart', (e) => {
+  const target = e.target.closest('.dragable-div');
+  if (!target) return;
+  dragSrcEl = target;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => target.classList.add('dragging'), 0);
+});
+
+container.addEventListener('dragend', (e) => {
+  const target = e.target.closest('.dragable-div');
+  if (target) {
+    target.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    checkGoodSiblings();
+    calculateScore();
+  }
+});
+
+container.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  const target = e.target.closest('.dragable-div');
+  if (!target || target === dragSrcEl) return;
+
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  target.classList.add('drag-over');
+
+  const rect = target.getBoundingClientRect();
+  const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+  container.insertBefore(dragSrcEl, next ? target.nextSibling : target);
+});
+
+container.addEventListener('dragleave', (e) => {
+  if (e.target.classList.contains('dragable-div')) {
+    e.target.classList.remove('drag-over');
+  }
+});
+
+// --- DRAWING HELPERS ---
+function createRow(text, index) {
+  const newDiv = document.createElement('div');
+  newDiv.className = 'dragable-div';
+  newDiv.id = `item${index}`;
+  newDiv.setAttribute('draggable', 'true');
+  
+  // Revised HTML markup nesting the image layout within the .blurb box 
+  newDiv.innerHTML = `
+    <div class="elevator-cmd green btn-up"> &#128316; </div>
+    <div class="elevator-cmd red btn-down"> &#128317; </div>
+    <div class="blurb">
+      <div class="blurb-img">
+        <img src="${index}.png" onerror="this.parentElement.style.display='none';">
+      </div>
+      ${text}
+    </div>
+  `;
+  container.appendChild(newDiv);
+}
+
+async function olddrawGameBoardInit(dataArray, delaySec) {
+  container.innerHTML = '';
+  for (let i = 0; i < dataArray.length; i++) {
+    await new Promise(r => setTimeout(r, delaySec * 1000));
+    createRow(dataArray[i], i);
+    container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
+
+
+async function drawGameBoardInit(dataArray, delaySec) {
+  container.innerHTML = '';
+  
+  for (let i = 0; i < dataArray.length; i++) {
+    // skip the pause on first item, instant draw div
+    if (i > 0) {
+      /* new Promise(r => ...)' acts as a wrapper for asynchronous tasks. 
+       * 'r' 'resolve', a built-in callback function.
+       * When 'r()' is called, it signals that the background task is finished.
+       * * 2. 'setTimeout(r, delaySec * 1000)' passes the 'r' (resolve) function 
+       * directly to the browser's timer. For a 2-second delay, it waits 2000ms, 
+       * then automatically executes 'r()', completing the Promise.
+       * * 3. The 'await' keyword pauses the 'for' loop right here. It forces 
+       * JavaScript to freeze on this line and wait until the Promise resolves 
+       * before moving to the next iteration.
+       */
+      await new Promise(r => setTimeout(r, delaySec * 1000));
+    }
+    
+    createRow(dataArray[i], i);
+    container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
+
+function drawGameBoardShuffled(nonShuffledArray, shuffledArray) {
+  container.innerHTML = '';
+  for (let originalIndex of shuffledArray) {
+    createRow(nonShuffledArray[originalIndex], originalIndex);
+  }
+  window.scrollTo(0, 0);
+}
+
+
+ 
+
+
+
+
+function shuffleTheIndex(myLength) {
+  let indexArray = Array.from(Array(myLength).keys());
+  for (let i = indexArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indexArray[i], indexArray[j]] = [indexArray[j], indexArray[i]];
+  }
+  return indexArray;
+}
+
+// --- ORIGINAL ARRAY DATA ---
+var myArray = [
+  "In the beginning: Humans dig up rocks, sand and dirt. In these earth materials we find small bits of gold, chemicals, and other elements. We have learned to extract and refine the raw material into elements from the periodic table. These mining operations harm the planet, however they let humans create raw materials for factories. This is how we make plastic and metals.",
+  "Computer parts are made from raw materials. Plastic, metal and chemicals go into computer components. These chemicals are toxic to humans. A CRT screen, battery, and hard drive are very toxic inside.",
+  "A new computer is made in Asia from smaller components. Most electronics are built on the continent of Asia. Asia includes China, Taiwan, Malaysia, Thailand and many powerhouse technology countries. Weak laws about labor make these factories cheaper to run, sometimes employees get sick from the toxins.",
+  "New computers go in a container box and a container ship. The boat starts in Asia and exports the technology to the USA. America imports computers and electronic devices."
+
+
+  ,
+  "The new computer is now in America. Americans buy a new computer from a store. Some buy Chinese computers on the Internet from Dell.com ( founded by American Michael Dell)",
+  "People install applications or programs on a brand new Apple, Dell or Compaq computer. They want to have more fun or do more work. They take a lot of photos and videos and don't want to delete them. They also want to protect their special memories.",
+  "After some time the new computer computer needs cybersecurity updates to protect the owner. Apps are updated manually or in the store. Microsoft fixes their Windows OS. Apple fixes Mac OS. The Chromebook Operating System is updated by Google. These big companies can harm us.",
+  "How can harm happen? Sometimes these billion dollar companies terminate their update tools. This is called planned obsolescence. It's like a doctor who won't help old people. Some people wipe off the corporate OS and install a free and open source Linux OS distribution Distrowatch.com The Operating system allows you to save files, install apps and use the apps.",
+  "If you are lucky enough to keep getting OS updates: The hard drive starts to run out of space. The owner of the computer may not know they have too many files. Pictures and videos use a lot of space on the hard drive known as internal storage. It's like an internal organ that can not keep up with the human owner.",
+  "The owner has to go beyond updates and seek out more capacity or bigger fixes. Sometimes one component will not be made to last very long. This is another example of organ failure. One component on the computer can be damaged in an accident, like a broken screen. Many companies do not make replacement parts, or even let you fix things. Again profit can cause harm.",
+  "We need laws to limit the harm. Big companies care less about e-waste garbage, and care more about profit, several states and countries have made 'Right To Repair' laws. New York and Oregon are the first states to start this battle to reduce e-waste. New laws give an owner rights and help in making big or small fixes to their computer or the smaller components inside. This is how we reduce waste. Reduce is the first letter R in the slogan Reduce, then reuse, then recycle.",
+  "If the big or small repair works we learn that adding new hardware components to an older PC can make it faster, and hold more files than new computers. Then again, big repairs can fail.",
+  "Sometimes big repairs fail. When a computer or device can't be used or repaired and it becomes obsolete. It must be removed from the house or work area.",
+  "The owner abandons the dead computer in storage. Sometimes the owner brings the computer to a garbage dump or recycling business.",
+  "In 1989 France, Spain and many countries agreed to stop exporting dead computers to Africa and China or other places. The kind leaders of these countries had a big meeting (convention) in the town of Basel Switzerland. They signed the BASEL convention; it's an agreement to end exporting e-waste. If people have a business that accepts dead computers, they must have a certificate to show they will not dump that in another country. The BASEL convention helps avoid mining new raw material out of the ground. We want to reduce, reuse, and recycle as much as possible.",
+  "What happens in countries that do not follow BASEL? The year 2025 has come and gone. The USA will still not ratify the BASEL treaty. American companies say it will make our computers more expensive if we pass laws about our dead computers being sent to other countries.",
+  "In 2026 we know about 40 million computers will become e-waste every year in the USA. These dead computers are dumped in America but also sent on boats to be dumped elsewhere.",
+  "People in Asia or Africa receive American e-waste exports. They work for pennies a day. ¢¢ Some computers or parts are sold or reused. The laws don't protect adults who try to fix the e-waste or process the raw materials. These adults work hard to feed their children and make a good life",
+  "Very young children who live nearby never sell or buy the computers. They live surrounded by American computer e-waste. Computers start to pile up in these countries.",
+  "Computers pile up and with no place to sell them they go to the dump and get burned. The water and soil become toxic when computers are burnt or discarded in a dump. The dump is toxic for billions of years. It will be toxic forever, and never go away. But by then, humans may not exist anymore: Just like the dinosaurs met the end."
+
+];
+</script>
+</body>
+</html>
